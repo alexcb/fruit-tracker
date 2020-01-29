@@ -43,7 +43,8 @@ CREATE TABLE "mad"."prices" (
     "id" BIGSERIAL PRIMARY KEY NOT NULL,
     "commodity_id" integer REFERENCES "mad"."commodity"(id),
     "price" NUMERIC(16, 2),
-    "date" date
+    "date" date,
+    unique (commodity_id, date)
 );
 ''')
     connection.commit()

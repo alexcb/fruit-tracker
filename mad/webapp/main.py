@@ -2,6 +2,8 @@ from flask import Flask, escape, request
 import psycopg2
 import json
 import datetime
+import io
+import csv
 
 
 def db_connect(user="postgres", password="example", host="mad_database_1", port="5432", database='mad_dev'):
@@ -20,7 +22,7 @@ def get_data(commodity_id):
     try:
         connection, cursor = db_connect()
 
-        cursor.execute('SELECT date, price FROM "mad"."prices" WHERE commodity_id = %s', (commodity_id,));
+        cursor.execute('SELECT date, price FROM "mad"."prices" WHERE commodity_id = %s ORDER BY date', (commodity_id,));
 
         data = []
         while 1:
@@ -30,6 +32,52 @@ def get_data(commodity_id):
             data.append(row)
 
         return data
+    finally:
+        cursor.close()
+        connection.close()
+
+def get_commodity_ids():
+    '''returns (dict mapping IDs->name, dict mapping names->ID)'''
+    try:
+        connection, cursor = db_connect()
+
+        cursor.execute('SELECT id, name FROM "mad"."commodity"');
+
+        commodity_ids = {}
+        commodity_names = {}
+        while 1:
+            row = cursor.fetchone()
+            if row is None:
+                break
+            commodity_id, commodity_name = row
+            commodity_ids[commodity_id] = commodity_name
+            commodity_names[commodity_name] = commodity_id
+
+        return commodity_ids, commodity_names
+    finally:
+        cursor.close()
+        connection.close()
+
+def get_all_data():
+    data = {}
+    try:
+        connection, cursor = db_connect()
+
+        cursor.execute('SELECT c.name, p.date, p.price FROM "mad"."prices" p LEFT JOIN "mad"."commodity" c ON (p.commodity_id = c.id)');
+
+        data = {}
+        dates = set()
+        while 1:
+            row = cursor.fetchone()
+            if row is None:
+                break
+            commodity_name, date, price = row
+            if commodity_name not in data:
+                data[commodity_name] = {}
+            data[commodity_name][date] = price
+            dates.add(date)
+
+        return data, sorted(dates)
     finally:
         cursor.close()
         connection.close()
@@ -266,6 +314,92 @@ def hello():
 
 </html>'''
 
+
+@app.route('/data')
+def data():
+    data, dates = get_all_data()
+    keys = sorted(data.keys())
+    rows = [
+        ['commodity'] + dates
+            ]
+    for k in keys:
+        row = [k]
+        for date in dates:
+            price = data[k].get(date)
+            row.append(price)
+        rows.append(row)
+
+    # change to csv
+    output = io.StringIO()
+    writer = csv.writer(output, quoting=csv.QUOTE_NONNUMERIC)
+    for row in rows:
+        writer.writerow(row)
+    return output.getvalue()
+
+@app.route('/upload')
+def upload():
+    return '''
+<html>
+<body>
+Upload prices from csv file (raw data can be accessed <a href="/data">here</a>)<br/>
+<form method="post" action="/upload2" enctype="multipart/form-data">
+  <input type="file" name="csvdata" accept=".csv"><br/>
+  <input type="submit" value="Upload">
+</form>
+</body>
+</html>
+    '''
+
+@app.route('/upload2', methods=['POST'])
+def upload_handler():
+    commodity_ids, commodity_names = get_commodity_ids()
+    raw_data = request.files['csvdata'].read().decode('utf8')
+    reader = csv.reader(io.StringIO(raw_data))
+    dates = []
+    data = {}
+    for i, row in enumerate(reader):
+        if i == 0:
+            for j, cell in enumerate(row):
+                if j == 0:
+                    if cell != 'commodity':
+                        return 'csv file invalid; first row cell should be "commodity"'
+                else:
+                    try:
+                        date = datetime.datetime.strptime(cell, "%Y-%m-%d")
+                    except:
+                        return f'csv file invalid; failed to parse date "{cell}" in row 0 cell {j}'
+                    dates.append(date)
+        else:
+            commodity_name = row[0]
+            if commodity_name not in commodity_names:
+                return f'unknown commodity "{commodity_name}" in row {i}'
+            prices = row[1:]
+            for j, price in enumerate(prices):
+                try:
+                    if price == "":
+                        prices[j] = None
+                    else:
+                        prices[j] = float(price)
+                except:
+                    return f'failed to parse price in row {i} coll {j} with value "{price}"'
+            data[commodity_name] = prices
+
+    try:
+        connection, cursor = db_connect()
+
+        for commodity_name, prices in data.items():
+            commodity_id = commodity_names[commodity_name]
+            assert len(dates) == len(prices)
+            for date, price in zip(dates, prices):
+                cursor.execute('INSERT INTO "mad"."prices" (commodity_id, date, price) VALUES (%s, %s, %s) ON CONFLICT (commodity_id, date) DO UPDATE SET price = excluded.price', (commodity_id, date, price));
+
+        connection.commit()
+
+    finally:
+        cursor.close()
+        connection.close()
+
+    return 'updated database'
 
 
 if __name__ == '__main__':
