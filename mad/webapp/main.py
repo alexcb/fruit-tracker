@@ -251,7 +251,7 @@ def hello():
             yAxes: [{
                     scaleLabel: {
                         display:     true,
-                        labelString: 'value'
+                        labelString: 'Price (USD)'
                     }
                 }]
         },
