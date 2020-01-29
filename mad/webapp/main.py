@@ -1,4 +1,4 @@
-from flask import Flask, escape, request
+from flask import Flask, escape, request, Response
 import psycopg2
 import json
 import datetime
@@ -85,116 +85,19 @@ def get_all_data():
 def date_to_epoch_ms(x):
     return int(datetime.datetime.combine(x, datetime.datetime.min.time()).timestamp() * 1000)
 
-@app.route('/other')
-def other():
-    return '''
-    <!doctype html>
-<html>
-
-<head>
-    <title>Line Chart</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.bundle.js"></script>
-    <style>
-        canvas {
-            -moz-user-select: none;
-            -webkit-user-select: none;
-            -ms-user-select: none;
-        }
-    </style>
-</head>
-
-<body>
-<div style="width:75%;">
-    <canvas id="canvas"></canvas>
-</div>
-<script>
-    var timeFormat = 'DD/MM/YYYY';
-
-    var config = {
-        type:    'line',
-        data:    {
-            datasets: [
-                {
-                    label: "US Dates",
-                    data: [{
-                        x: "04/01/2014", y: 175
-                    }, {
-                        x: "10/01/2014", y: 175
-                    }, {
-                        x: "04/01/2015", y: 178
-                    }, {
-                        x: "10/01/2015", y: 178
-                    }],
-                    fill: false,
-                    borderColor: 'red'
-                },
-                {
-                    label: "UK Dates",
-                    data:  [{
-                        x: "01/04/2014", y: 175
-                    }, {
-                        x: "01/10/2014", y: 175
-                    }, {
-                        x: "01/04/2015", y: 178
-                    }, {
-                        x: "01/10/2015", y: 178
-                    }],
-                    fill:  false,
-                    borderColor: 'blue'
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            title:      {
-                display: true,
-                text:    "Chart.js Time Scale"
-            },
-            scales:     {
-                xAxes: [{
-                    type:       "time",
-                    time:       {
-                        format: timeFormat,
-                        tooltipFormat: 'll'
-                    },
-                    scaleLabel: {
-                        display:     true,
-                        labelString: 'Date'
-                    }
-                }],
-                yAxes: [{
-                    scaleLabel: {
-                        display:     true,
-                        labelString: 'value'
-                    }
-                }]
-            }
-        }
-    };
-
-    window.onload = function () {
-        var ctx       = document.getElementById("canvas").getContext("2d");
-        window.myLine = new Chart(ctx, config);
-    };
-
-</script>
-
-</body>
-
-</html>'''
-
 @app.route('/')
 def hello():
-    data = get_data(1)
-    data_t = json.dumps([date_to_epoch_ms(x) for (x, _) in data])
-    data_y1 = json.dumps([float(x) for (_, x) in data])
 
-    data = get_data(2)
-    data_y2 = json.dumps([float(x) for (_, x) in data])
+    _, commodity_names = get_commodity_ids()
+    data = []
+    for commodity_name, commodity_id in commodity_names.items():
+        price_data = get_data(commodity_id)
+        data.append({
+            'name': commodity_name,
+            't': [date_to_epoch_ms(x) for (x, _) in price_data],
+            'y': [float(x) for (_, x) in price_data],
+            })
 
-    data = get_data(3)
-    data_y3 = json.dumps([float(x) for (_, x) in data])
-    
     return '''<!doctype html>
 <html>
 
@@ -212,33 +115,51 @@ def hello():
 
 
 <body>
+<h1>Alex's Fruit tracker</h1>
+raw data is available for <a href="/data">download</a><br/>
+new data can be uploaded <a href="/upload">here</a><br/>
+
 	<div style="width:75%;">
 		<canvas id="canvas"></canvas>
 	</div>
 	<script>
-                var data_t = ''' + data_t + ''';
-                var data_y1 = ''' + data_y1 + ''';
-                var data_y2 = ''' + data_y2 + ''';
-                var data_y3 = ''' + data_y3 + ''';
 
-                var data1 = [];
-                var data2 = [];
-                var data3 = [];
+    var shapes = ['triangle', 'cross', 'square', 'circle'];
+    var colors = [
+        'rgb(255, 99, 132)',
+        'rgb(94, 172, 32)',
+        'rgb(10, 40, 199)',
+        'rgb(189, 189, 20)',
+        ];
 
-                for( var i = 0; i < data_t.length; i++ ) {
-                    data1.push({
-                        x: new Date(data_t[i]),
-                        y: data_y1[i]
-                        });
-                    data2.push({
-                        x: new Date(data_t[i]),
-                        y: data_y2[i]
-                        });
-                    data3.push({
-                        x: new Date(data_t[i]),
-                        y: data_y3[i]
-                        });
-                }
+    function get_item_wrap(i, l) {
+        i = i % l.length;
+        return l[i]
+    }
+
+    var data = ''' + json.dumps(data) + ''';
+
+    var datasets = [];
+
+    for( var i = 0; i < data.length; i++ ) {
+        var price_data = []
+        for( var j = 0; j < data[i].y.length; j++ ) {
+            price_data.push({
+                x: new Date(data[i].t[j]),
+                y: data[i].y[j]
+            });
+        }
+
+        datasets.push({
+            label: data[i].name,
+            pointRadius: 10,
+            lineTension: 0,
+            pointStyle: get_item_wrap(i, shapes),
+            borderColor: get_item_wrap(i, colors),
+            fill: false,
+            data: price_data
+        });
+    }
 
                 var ctx = document.getElementById('canvas').getContext('2d');
     var chart = new Chart(ctx, {
@@ -247,35 +168,7 @@ def hello():
 
     // The data for our dataset
     data: {
-        datasets: [
-            {
-                label: 'apples',
-                pointStyle: 'triangle',
-                pointRadius: 10,
-                lineTension: 0,
-                borderColor: 'rgb(255, 99, 132)',
-                fill: false,
-                data: data1
-            },
-            {
-                label: 'pears',
-                pointStyle: 'cross',
-                pointRadius: 10,
-                lineTension: 0,
-                borderColor: 'rgb(66, 170, 102)',
-                fill: false,
-                data: data2
-            },
-            {
-                label: 'quince',
-                pointStyle: 'square',
-                pointRadius: 10,
-                lineTension: 0,
-                borderColor: 'rgb(100, 123, 197)',
-                fill: false,
-                data: data3
-            }
-        ]
+        datasets: datasets
     },
 
     // Configuration options go here
@@ -334,14 +227,24 @@ def data():
     writer = csv.writer(output, quoting=csv.QUOTE_NONNUMERIC)
     for row in rows:
         writer.writerow(row)
-    return output.getvalue()
+    csv_data = output.getvalue()
+
+    return Response(
+            csv_data,
+            mimetype="text/csv",
+            headers={"Content-disposition":
+                     "attachment; filename=fruit_prices.csv"})
 
 @app.route('/upload')
 def upload():
     return '''
 <html>
 <body>
-Upload prices from csv file (raw data can be accessed <a href="/data">here</a>)<br/>
+
+<i>This page allows an admin to update the data based on a previously <a href="/data">downloaded</a> CSV file.</i>
+
+<br/> <br/>
+
 <form method="post" action="/upload2" enctype="multipart/form-data">
   <input type="file" name="csvdata" accept=".csv"><br/>
   <input type="submit" value="Upload">
