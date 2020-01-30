@@ -1,4 +1,4 @@
-version: '3'
+version: '3.3'
 
 services:
   database:
@@ -10,3 +10,14 @@ services:
     restart: always
     ports:
       - 8080:8080
+  flask:
+    image: myflaskrunner
+    restart: always
+    command: '/usr/local/bin/flask run --host 0.0.0.0'
+    volumes:
+      - './webapp:/webapp'
+    working_dir: /webapp
+    environment:
+      FLASK_APP: main.py
+      FLASK_ENV: development
+

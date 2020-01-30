@@ -6,22 +6,43 @@ import io
 import csv
 
 
+
+db_connection = None
 def db_connect(user="postgres", password="example", host="mad_database_1", port="5432", database='mad_dev'):
-    connection = psycopg2.connect(user=user,
+    global db_connection
+    if db_connection:
+        try:
+            cur = db_connection.cursor()
+            cur.execute('SELECT 1')
+            return db_connection, cur
+        except psycopg2.OperationalError:
+            db_connection = None
+
+    db_connection = psycopg2.connect(user=user,
                                   password=password,
                                   host=host,
                                   port=port,
                                   database=database,
                                   )
-    cursor = connection.cursor()
-    return connection, cursor
+    cursor = db_connection.cursor()
+    return db_connection, cursor
+
+class database(): 
+    def __init__(self): 
+         self.db, self.cur = db_connect()
+
+    def __enter__(self): 
+        return self.db, self.cur
+      
+    def __exit__(self, exc_type, exc_value, exc_traceback): 
+        # only close the cursor; the connection is pooled
+        self.cur.close()
+
 
 app = Flask(__name__)
 
 def get_data(commodity_id):
-    try:
-        connection, cursor = db_connect()
-
+    with database() as (connection, cursor):
         cursor.execute('SELECT date, price FROM "mad"."prices" WHERE commodity_id = %s ORDER BY date', (commodity_id,));
 
         data = []
@@ -32,15 +53,11 @@ def get_data(commodity_id):
             data.append(row)
 
         return data
-    finally:
-        cursor.close()
-        connection.close()
 
 def get_commodity_ids():
     '''returns (dict mapping IDs->name, dict mapping names->ID)'''
-    try:
-        connection, cursor = db_connect()
 
+    with database() as (connection, cursor):
         cursor.execute('SELECT id, name FROM "mad"."commodity"');
 
         commodity_ids = {}
@@ -54,14 +71,10 @@ def get_commodity_ids():
             commodity_names[commodity_name] = commodity_id
 
         return commodity_ids, commodity_names
-    finally:
-        cursor.close()
-        connection.close()
 
 def get_all_data():
-    data = {}
-    try:
-        connection, cursor = db_connect()
+    with database() as (connection, cursor):
+        data = {}
 
         cursor.execute('SELECT c.name, p.date, p.price FROM "mad"."prices" p LEFT JOIN "mad"."commodity" c ON (p.commodity_id = c.id)');
 
@@ -78,9 +91,6 @@ def get_all_data():
             dates.add(date)
 
         return data, sorted(dates)
-    finally:
-        cursor.close()
-        connection.close()
 
 def date_to_epoch_ms(x):
     return int(datetime.datetime.combine(x, datetime.datetime.min.time()).timestamp() * 1000)
@@ -287,9 +297,7 @@ def upload_handler():
                     return f'failed to parse price in row {i} coll {j} with value "{price}"'
             data[commodity_name] = prices
 
-    try:
-        connection, cursor = db_connect()
-
+    with database() as (connection, cursor):
         for commodity_name, prices in data.items():
             commodity_id = commodity_names[commodity_name]
             assert len(dates) == len(prices)
@@ -297,10 +305,6 @@ def upload_handler():
                 cursor.execute('INSERT INTO "mad"."prices" (commodity_id, date, price) VALUES (%s, %s, %s) ON CONFLICT (commodity_id, date) DO UPDATE SET price = excluded.price', (commodity_id, date, price));
 
         connection.commit()
-
-    finally:
-        cursor.close()
-        connection.close()
 
     return 'updated database'
 
