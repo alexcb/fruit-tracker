@@ -1,45 +1,35 @@
-from flask import Flask, escape, request, Response
+import flask
+from flask import Flask, escape, request, Response, redirect, url_for, make_response
 import psycopg2
 import json
 import datetime
 import io
 import csv
+import tenjin
+from tenjin.helpers import *
+from tenjin.html import *
 
 
+from functools import wraps
 
-db_connection = None
-def db_connect(user="postgres", password="example", host="mad_database_1", port="5432", database='mad_dev'):
-    global db_connection
-    if db_connection:
-        try:
-            cur = db_connection.cursor()
-            cur.execute('SELECT 1')
-            return db_connection, cur
-        except psycopg2.OperationalError:
-            db_connection = None
 
-    db_connection = psycopg2.connect(user=user,
-                                  password=password,
-                                  host=host,
-                                  port=port,
-                                  database=database,
-                                  )
-    cursor = db_connection.cursor()
-    return db_connection, cursor
-
-class database(): 
-    def __init__(self): 
-         self.db, self.cur = db_connect()
-
-    def __enter__(self): 
-        return self.db, self.cur
-      
-    def __exit__(self, exc_type, exc_value, exc_traceback): 
-        # only close the cursor; the connection is pooled
-        self.cur.close()
+from database import database
+from auth import auth_user, validate_sid, create_new_session
 
 
 app = Flask(__name__)
+
+engine = tenjin.Engine(path=['templates'])
+
+@app.before_request
+def before_request():
+    sid = request.cookies.get('sid')
+    app.logger.info(f'hello: {sid}')
+
+    with database() as (connection, cursor):
+        flask.g.user_email, flask.g.user_admin = validate_sid(cursor, sid)
+        app.logger.info(f'sid {sid}; user {flask.g.user_email} {flask.g.user_admin}')
+
 
 def get_data(commodity_id):
     with database() as (connection, cursor):
@@ -95,7 +85,56 @@ def get_all_data():
 def date_to_epoch_ms(x):
     return int(datetime.datetime.combine(x, datetime.datetime.min.time()).timestamp() * 1000)
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not flask.g.user_email:
+            return redirect('/login')
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/login', methods=['GET'])
+def login_form():
+    context = {
+        'sid': flask.g.user_email,
+        }
+    return engine.render('login.pyhtml', context)
+
+@app.route('/login', methods=['POST'])
+def login_handler():
+    email = request.form.get('email', '')
+    password = request.form.get('password', '')
+
+    with database() as (connection, cursor):
+        user_id, success = auth_user(cursor, email, password)
+
+        if not success:
+            app.logger.info('login failed')
+
+            # TODO display page with error
+            response = make_response(redirect('/login'))
+            response.set_cookie('sid', '', expires=0)
+            return response
+
+        sid = create_new_session(cursor, user_id)
+        connection.commit()
+
+    app.logger.info('login success')
+
+    response = make_response(redirect('/'))
+    response.set_cookie('sid', sid)
+    return response
+
+@app.route('/logout')
+def logout_handler():
+    global logged_in_user
+    logged_in_user = None
+    response = make_response(redirect('/'))
+    response.set_cookie('sid', '', expires=0)
+    return response
+
 @app.route('/')
+@login_required
 def hello():
 
     _, commodity_names = get_commodity_ids()
@@ -108,114 +147,12 @@ def hello():
             'y': [float(x) for (_, x) in price_data],
             })
 
-    return '''<!doctype html>
-<html>
-
-<head>
-	<title>Line Chart Multiple Axes</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.bundle.js"></script>
-	<style>
-	canvas {
-		-moz-user-select: none;
-		-webkit-user-select: none;
-		-ms-user-select: none;
-	}
-	</style>
-</head>
-
-
-<body>
-<h1>Alex's Fruit tracker</h1>
-raw data is available for <a href="/data">download</a><br/>
-new data can be uploaded <a href="/upload">here</a><br/>
-
-	<div style="width:75%;">
-		<canvas id="canvas"></canvas>
-	</div>
-	<script>
-
-    var shapes = ['triangle', 'cross', 'square', 'circle'];
-    var colors = [
-        'rgb(255, 99, 132)',
-        'rgb(94, 172, 32)',
-        'rgb(10, 40, 199)',
-        'rgb(189, 189, 20)',
-        ];
-
-    function get_item_wrap(i, l) {
-        i = i % l.length;
-        return l[i]
-    }
-
-    var data = ''' + json.dumps(data) + ''';
-
-    var datasets = [];
-
-    for( var i = 0; i < data.length; i++ ) {
-        var price_data = []
-        for( var j = 0; j < data[i].y.length; j++ ) {
-            price_data.push({
-                x: new Date(data[i].t[j]),
-                y: data[i].y[j]
-            });
+    context = {
+        'user_email': flask.g.user_email,
+        'is_admin': flask.g.user_admin,
+        'data': json.dumps(data),
         }
-
-        datasets.push({
-            label: data[i].name,
-            pointRadius: 10,
-            lineTension: 0,
-            pointStyle: get_item_wrap(i, shapes),
-            borderColor: get_item_wrap(i, colors),
-            fill: false,
-            data: price_data
-        });
-    }
-
-                var ctx = document.getElementById('canvas').getContext('2d');
-    var chart = new Chart(ctx, {
-    // The type of chart we want to create
-    type: 'line',
-
-    // The data for our dataset
-    data: {
-        datasets: datasets
-    },
-
-    // Configuration options go here
-    options: {
-        animation: false,
-        responsive: true,
-        legend: {
-            position: 'bottom',
-            labels: {
-                usePointStyle: true
-            }
-        },
-        scales: {
-            xAxes: [{
-                    type:       "time",
-                    scaleLabel: {
-                        display:     true,
-                        labelString: 'Date'
-                    }
-                }],
-            yAxes: [{
-                    scaleLabel: {
-                        display:     true,
-                        labelString: 'Price (USD)'
-                    }
-                }]
-        },
-        title: {
-            display: true,
-            text: 'fruit prices'
-        }
-    }
-});
-	</script>
-</body>
-
-</html>'''
+    return engine.render('dashboard.pyhtml', context)
 
 
 @app.route('/data')

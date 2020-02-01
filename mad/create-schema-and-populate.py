@@ -33,6 +33,27 @@ def init_database(user="postgres", password="example", host="mad_database_1", po
     cursor.execute('create schema mad;')
 
     cursor.execute(''' 
+CREATE TABLE "mad"."users" (
+    "id" SERIAL PRIMARY KEY NOT NULL,
+    "email" varchar(255) UNIQUE NOT NULL,
+    "salt" varchar(255) NOT NULL,
+    "password" varchar(255) NOT NULL,
+    "active" BOOLEAN NOT NULL,
+    "admin" BOOLEAN NOT NULL
+);
+''')
+
+    cursor.execute(''' 
+CREATE TABLE "mad"."sessions" (
+    "sid" varchar(255) PRIMARY KEY NOT NULL,
+    "user_id" integer REFERENCES "mad"."users"(id),
+    "created" timestamp without time zone,
+    "last_active" timestamp without time zone,
+    unique (user_id)
+);
+''')
+
+    cursor.execute(''' 
 CREATE TABLE "mad"."commodity" (
     "id" SERIAL PRIMARY KEY NOT NULL,
     "name" varchar(255) UNIQUE NOT NULL
@@ -50,10 +71,27 @@ CREATE TABLE "mad"."prices" (
 ''')
     connection.commit()
 
+    import hashlib, uuid
+    # admin
+    salt = uuid.uuid4().hex
+    password = 'admin'
+    hashed_password = hashlib.sha512((password + salt).encode('utf8')).hexdigest()
+
+    cursor.execute('INSERT INTO "mad"."users" (email, salt, password, active, admin) VALUES (%s, %s, %s, %s, %s)', (
+        'admin', salt, hashed_password, True, True,))
+
+    # user
+    salt = uuid.uuid4().hex
+    password = 'user'
+    hashed_password = hashlib.sha512((password + salt).encode('utf8')).hexdigest()
+    cursor.execute('INSERT INTO "mad"."users" (email, salt, password, active, admin) VALUES (%s, %s, %s, %s, %s)', (
+        'user', salt, hashed_password, True, False,))
+
+
     fruits = ('apple', 'orange', 'pear', 'quince')
 
     for fruit in fruits:
-        cursor.execute('INSERT INTO "mad"."commodity" (name) VALUES (%s)', (fruit,));
+        cursor.execute('INSERT INTO "mad"."commodity" (name) VALUES (%s)', (fruit,))
 
     connection.commit()
 

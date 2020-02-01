@@ -1,0 +1,114 @@
+<!doctype html>
+<html>
+
+<head>
+	<title>Line Chart Multiple Axes</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.bundle.js"></script>
+	<style>
+	canvas {
+		-moz-user-select: none;
+		-webkit-user-select: none;
+		-ms-user-select: none;
+	}
+	</style>
+</head>
+
+
+<body>
+<h1>Alex's Fruit tracker</h1>
+logged in as: #{user_email}; <a href="/logout">logout</a><br/>
+
+<?py if is_admin > 0: ?>
+admin mode: new data can be uploaded <a href="/upload">here</a><br/>
+<?py #endif ?>
+
+raw data is available for <a href="/data">download</a><br/>
+
+	<div style="width:75%;">
+		<canvas id="canvas"></canvas>
+	</div>
+	<script>
+
+    var shapes = ['triangle', 'cross', 'square', 'circle'];
+    var colors = [
+        'rgb(255, 99, 132)',
+        'rgb(94, 172, 32)',
+        'rgb(10, 40, 199)',
+        'rgb(189, 189, 20)',
+        ];
+
+    function get_item_wrap(i, l) {
+        i = i % l.length;
+        return l[i]
+    }
+
+    var data = #{data};
+
+    var datasets = [];
+
+    for( var i = 0; i < data.length; i++ ) {
+        var price_data = []
+        for( var j = 0; j < data[i].y.length; j++ ) {
+            price_data.push({
+                x: new Date(data[i].t[j]),
+                y: data[i].y[j]
+            });
+        }
+
+        datasets.push({
+            label: data[i].name,
+            pointRadius: 10,
+            lineTension: 0,
+            pointStyle: get_item_wrap(i, shapes),
+            borderColor: get_item_wrap(i, colors),
+            fill: false,
+            data: price_data
+        });
+    }
+
+                var ctx = document.getElementById('canvas').getContext('2d');
+    var chart = new Chart(ctx, {
+    // The type of chart we want to create
+    type: 'line',
+
+    // The data for our dataset
+    data: {
+        datasets: datasets
+    },
+
+    // Configuration options go here
+    options: {
+        animation: false,
+        responsive: true,
+        legend: {
+            position: 'bottom',
+            labels: {
+                usePointStyle: true
+            }
+        },
+        scales: {
+            xAxes: [{
+                    type:       "time",
+                    scaleLabel: {
+                        display:     true,
+                        labelString: 'Date'
+                    }
+                }],
+            yAxes: [{
+                    scaleLabel: {
+                        display:     true,
+                        labelString: 'Price (USD)'
+                    }
+                }]
+        },
+        title: {
+            display: true,
+            text: 'fruit prices'
+        }
+    }
+});
+	</script>
+</body>
+
+</html>'''
+

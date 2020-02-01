@@ -1,0 +1,15 @@
+<html>
+<body>
+
+<i>login required</i>
+
+<form method="post" action="/login">
+  email: <input type="text" name="email" autofocus><br/>
+  password: <input type="password" name="password"><br/>
+  <input type="submit" value="login">
+</form>
+
+<br/><i>sid: #{sid}</i>
+</body>
+</html>
+
