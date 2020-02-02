@@ -13,8 +13,8 @@ from tenjin.html import *
 from functools import wraps
 
 
-from database import database
-from auth import auth_user, validate_sid, create_new_session
+from .database import database
+from .auth import auth_user, validate_sid, create_new_session
 
 
 app = Flask(__name__)
@@ -31,6 +31,11 @@ def before_request():
         app.logger.info(f'sid {sid}; user {flask.g.user_email} {flask.g.user_admin}')
 
 
+@app.route('/static/<path:path>')
+def send_js(path):
+    return send_from_directory('static', path)
+
+
 def get_data(commodity_id):
     with database() as (connection, cursor):
         cursor.execute('SELECT date, price FROM "mad"."prices" WHERE commodity_id = %s ORDER BY date', (commodity_id,));
@@ -43,6 +48,27 @@ def get_data(commodity_id):
             data.append(row)
 
         return data
+
+def get_commodity_ids_and_attributes():
+    with database() as (connection, cursor):
+        cursor.execute('SELECT c.id, c.name, ca.attribute_key, ca.attribute_value FROM mad.commodity_attributes ca LEFT JOIN mad.commodity c ON (ca.commodity_id = c.id)');
+
+        commodities = {}
+        while 1:
+            row = cursor.fetchone()
+            if row is None:
+                break
+            commodity_id, commodity_name, k, v = row
+
+            if commodity_id not in commodities:
+                commodities[commodity_id] = {
+                    'name': commodity_name,
+                    'attributes': {},
+                    }
+            assert commodities[commodity_id]['name'] == commodity_name
+            commodities[commodity_id]['attributes'][k] = v
+
+        return commodities
 
 def get_commodity_ids():
     '''returns (dict mapping IDs->name, dict mapping names->ID)'''
@@ -137,6 +163,8 @@ def logout_handler():
 @login_required
 def hello():
 
+    commodities = get_commodity_ids_and_attributes()
+
     _, commodity_names = get_commodity_ids()
     data = []
     for commodity_name, commodity_id in commodity_names.items():
@@ -151,6 +179,7 @@ def hello():
         'user_email': flask.g.user_email,
         'is_admin': flask.g.user_admin,
         'data': json.dumps(data),
+        'commodities': json.dumps(commodities),
         }
     return engine.render('dashboard.pyhtml', context)
 

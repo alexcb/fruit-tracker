@@ -5,8 +5,12 @@ from datetime import timedelta, date
 
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
+from webapp.auth import create_user
+from webapp.commodity import create_new_commodity
+
 
 def init_database(user="postgres", password="example", host="mad_database_1", port="5432", database='mad_dev'):
+    print('creating db')
     # first create database
     connection = psycopg2.connect(user=user,
                                   password=password,
@@ -21,6 +25,7 @@ def init_database(user="postgres", password="example", host="mad_database_1", po
     del cursor
     del connection
 
+    print('creating schema')
     # reconnect to database
     connection = psycopg2.connect(user=user,
                                   password=password,
@@ -61,6 +66,16 @@ CREATE TABLE "mad"."commodity" (
 ''')
 
     cursor.execute(''' 
+CREATE TABLE "mad"."commodity_attributes" (
+    "id" SERIAL PRIMARY KEY NOT NULL,
+    "commodity_id" integer REFERENCES "mad"."commodity"(id),
+    "attribute_key" varchar(255) NOT NULL,
+    "attribute_value" varchar(255) NOT NULL,
+    unique (commodity_id, attribute_key)
+);
+''')
+
+    cursor.execute(''' 
 CREATE TABLE "mad"."prices" (
     "id" BIGSERIAL PRIMARY KEY NOT NULL,
     "commodity_id" integer REFERENCES "mad"."commodity"(id),
@@ -71,38 +86,22 @@ CREATE TABLE "mad"."prices" (
 ''')
     connection.commit()
 
-    import hashlib, uuid
-    # admin
-    salt = uuid.uuid4().hex
-    password = 'admin'
-    hashed_password = hashlib.sha512((password + salt).encode('utf8')).hexdigest()
+    create_user(cursor, 'admin', 'admin', True)
+    create_user(cursor, 'user', 'user', False)
 
-    cursor.execute('INSERT INTO "mad"."users" (email, salt, password, active, admin) VALUES (%s, %s, %s, %s, %s)', (
-        'admin', salt, hashed_password, True, True,))
-
-    # user
-    salt = uuid.uuid4().hex
-    password = 'user'
-    hashed_password = hashlib.sha512((password + salt).encode('utf8')).hexdigest()
-    cursor.execute('INSERT INTO "mad"."users" (email, salt, password, active, admin) VALUES (%s, %s, %s, %s, %s)', (
-        'user', salt, hashed_password, True, False,))
-
-
-    fruits = ('apple', 'orange', 'pear', 'quince')
-
-    for fruit in fruits:
-        cursor.execute('INSERT INTO "mad"."commodity" (name) VALUES (%s)', (fruit,))
-
-    connection.commit()
+    fruits = [
+        ('apple', {'sweet': 'medium', 'medium': 'fresh'}),
+        ('orange', {'sweet': 'high'}),
+        ('pear', {'sweet': 'high'}),
+        ('quince', {'sweet': 'low'}),
+        ('apple (dry)', {'sweet': 'medium', 'medium': 'dry'}),
+        ]
 
     fruit_mapping = {}
-    cursor.execute('SELECT id, name FROM "mad"."commodity"');
-    while 1:
-        row = cursor.fetchone()
-        if row is None:
-            break
-        fruit_id, fruit_name = row
-        fruit_mapping[fruit_name] = fruit_id
+    for (fruit, attributes) in fruits:
+        fruit_mapping[fruit] = create_new_commodity(cursor, fruit, attributes)
+
+    connection.commit()
 
     prices = {x: 10*x+5 for x in fruit_mapping.values()}
     d = date(2015, 1, 1)

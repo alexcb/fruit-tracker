@@ -1,34 +1,49 @@
 <!doctype html>
-<html>
-
+<html lang="en">
 <head>
-	<title>Line Chart Multiple Axes</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.bundle.js"></script>
-	<style>
-	canvas {
-		-moz-user-select: none;
-		-webkit-user-select: none;
-		-ms-user-select: none;
-	}
-	</style>
+  <title>Alex's fruit tracker</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/static/css/main.css">
+
+  <script src="/static/js/jquery-1.11.3.min.js"></script>
+  <script src="/static/js/Chart.bundle.js"></script>
+  <style>
+  canvas {
+    -moz-user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+  }
+  </style>
+
 </head>
-
-
 <body>
-<h1>Alex's Fruit tracker</h1>
-logged in as: #{user_email}; <a href="/logout">logout</a><br/>
+
+<div class="topnav">
+  <span>Alex's fruit tracker</span>
+
+  <a class="active" href="#home">Dashboard</a>
+  <a href="#commentary">Commentary</a>
+  <a href="#contact">Contact</a>
+  <div class="topnav-right">
+    <span>logged in as: #{user_email}</span>
+    <a href="/logout">logout</a>
+  </div>
+</div>
 
 <?py if is_admin > 0: ?>
 admin mode: new data can be uploaded <a href="/upload">here</a><br/>
 <?py #endif ?>
 
-raw data is available for <a href="/data">download</a><br/>
+<div id="container">
 
-	<div style="width:75%;">
-		<canvas id="canvas"></canvas>
-	</div>
-	<script>
+  <div style="width:75%;">
+    <canvas id="canvas"></canvas>
+  </div>
 
+</div>
+
+<script>
     var shapes = ['triangle', 'cross', 'square', 'circle'];
     var colors = [
         'rgb(255, 99, 132)',
@@ -107,8 +122,34 @@ raw data is available for <a href="/data">download</a><br/>
         }
     }
 });
-	</script>
+</script>
+
+<div id="filter"></div>
+
+<script>
+var attributes = {};
+var commodities = #{commodities};
+$.each(commodities, function(k, v) {
+  $.each(v.attributes, function(kk, vv) {
+    if( !attributes.hasOwnProperty(kk) ) {
+      attributes[kk] = {};
+    }
+    attributes[kk][vv] = 1;
+  });
+})
+
+
+$.each(attributes, function(k, v) {
+  var x = $('<div>');
+  x.append($('<p>' + k + '</p>'));
+  $.each(v, function(kk, vv) {
+    x.append($('<i>' + kk + '</i></br>'));
+  });
+  $('#filter').append(x);
+});
+
+console.log(attributes);
+</script>
+
 </body>
-
-</html>'''
-
+</html>

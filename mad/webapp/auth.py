@@ -1,6 +1,7 @@
 import hashlib
 import random
 import string
+import uuid
 
 
 def auth_user(cursor, email, password):
@@ -37,3 +38,12 @@ def validate_sid(cursor, sid):
 
     return email, admin
 
+
+def create_user(cursor, email, password, admin):
+    assert isinstance(email, str)
+    assert isinstance(password, str)
+    assert isinstance(admin, bool)
+    salt = ''.join(random.choice(string.ascii_lowercase) for i in range(250))
+    hashed_password = hashlib.sha512((password + salt).encode('utf8')).hexdigest()
+    cursor.execute('INSERT INTO "mad"."users" (email, salt, password, active, admin) VALUES (%s, %s, %s, %s, %s)', (
+        email, salt, hashed_password, True, admin,))
