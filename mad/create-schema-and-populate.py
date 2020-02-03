@@ -90,11 +90,12 @@ CREATE TABLE "mad"."prices" (
     create_user(cursor, 'user', 'user', False)
 
     fruits = [
-        ('apple', {'sweet': 'medium', 'medium': 'fresh'}),
-        ('orange', {'sweet': 'high'}),
-        ('pear', {'sweet': 'high'}),
-        ('quince', {'sweet': 'low'}),
+        ('apple',       {'sweet': 'medium', 'medium': 'fresh'}),
+        ('orange',      {'sweet': 'high',   'medium': 'fresh'}),
+        ('pear',        {'sweet': 'high',   'medium': 'fresh'}),
+        ('quince',      {'sweet': 'low',    'medium': 'fresh'}),
         ('apple (dry)', {'sweet': 'medium', 'medium': 'dry'}),
+        ('apple (juice)', {'sweet': 'high', 'medium': 'juice'}),
         ]
 
     fruit_mapping = {}

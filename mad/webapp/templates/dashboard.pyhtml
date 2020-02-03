@@ -126,6 +126,8 @@ admin mode: new data can be uploaded <a href="/upload">here</a><br/>
 
 <div id="filter"></div>
 
+<div id="results"></div>
+
 <script>
 var attributes = {};
 var commodities = #{commodities};
@@ -138,17 +140,60 @@ $.each(commodities, function(k, v) {
   });
 })
 
+function is_match(attributes, filters) {
+  var match = true;
+  $.each(filters, function(key,values) {
+    if( !attributes.hasOwnProperty(key) ) {
+      match = false;
+    } else {
+      var m = false;
+      $.each(values, function(filter_val,ignored) {
+        if( attributes[key] == filter_val ) {
+          m = true;
+        }
+      });
+      if( !m ) {
+        match = false;
+      }
+    }
+  });
+  return match;
+}
+
+function update_commodity_list() {
+  var filters = {};
+  $.each($('.attributefilter:checkbox:checked'), function(i, x) {
+    if( !filters.hasOwnProperty(x.name) ) {
+      filters[x.name] = {};
+    }
+    filters[x.name][x.value] = 1;
+  });
+  var filtered_commodities = {};
+  $.each(commodities, function(k, v) {
+    var ok = true;
+    if( is_match(v.attributes, filters ) ) {
+      filtered_commodities[k] = v
+    }
+  });
+  var ul = $('<ul>');
+  $.each(filtered_commodities, function(k, v) {
+    ul.append($('<li>' + v.name + '</li>'));
+  });
+  $('#results').empty();
+  $('#results').append(ul);
+}
 
 $.each(attributes, function(k, v) {
   var x = $('<div>');
   x.append($('<p>' + k + '</p>'));
   $.each(v, function(kk, vv) {
-    x.append($('<i>' + kk + '</i></br>'));
+    x.append($('<label><input type="checkbox" name="'+k+'" value="'+kk+'" class="attributefilter" onchange="update_commodity_list()">' + kk + '</label><br/>'));
   });
   $('#filter').append(x);
 });
 
 console.log(attributes);
+update_commodity_list();
 </script>
 
 </body>
