@@ -1,4 +1,4 @@
 requests==2.22.0
 psycopg2==2.8.4
-flask==1.1.1
+flask==2.3.2
 Tenjin==1.1.1
