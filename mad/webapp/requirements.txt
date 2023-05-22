@@ -1,4 +1,4 @@
-requests==2.22.0
+requests==2.31.0
 psycopg2==2.8.4
 flask==1.1.1
 Tenjin==1.1.1
